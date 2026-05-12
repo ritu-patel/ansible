@@ -1,0 +1,16 @@
+---
+- hosts: localhost
+  gather_facts: false
+
+  vars:
+    username: "{{ vpn_user | default('unknown') }}"
+
+  tasks:
+
+    - name: Simulate VPN certificate renewal
+      debug:
+        msg: "VPN certificate renewed for {{ username }}"
+
+    - name: Simulate sending email
+      debug:
+        msg: "Notification sent to {{ username }}"
