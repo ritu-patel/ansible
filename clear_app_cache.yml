@@ -1,0 +1,62 @@
+---
+- name: Ask IT v2 demo clear app cache
+  hosts: localhost
+  gather_facts: false
+  connection: local
+
+  vars:
+    employee_id: "{{ employee_id | default('UNKNOWN') }}"
+    app_name: "{{ app_name | default('Unknown App') }}"
+    device_id: "{{ device_id | default('auto') }}"
+    cache_path: "{{ cache_path | default('/tmp/demo-cache') }}"
+    audit_log_path: "/var/log/nt-it-automation/clear_app_cache.log"
+
+  tasks:
+    - name: Validate cache clear request
+      ansible.builtin.assert:
+        that:
+          - employee_id != 'UNKNOWN'
+          - app_name | length > 0
+        fail_msg: "employee_id and app_name are required for cache clearing"
+        success_msg: "Validated cache clear request for {{ app_name }}"
+
+    - name: Simulate cache inventory
+      ansible.builtin.debug:
+        msg: |
+          Cache inventory:
+          Employee: {{ employee_id }}
+          Application: {{ app_name }}
+          Device: {{ device_id }}
+          Cache path: {{ cache_path }}
+          Estimated cache size before cleanup: 824 MB
+
+    - name: Simulate cache cleanup
+      ansible.builtin.debug:
+        msg: |
+          Cache cleanup completed:
+          Removed stale files from {{ cache_path }}
+          Application: {{ app_name }}
+          Status: CACHE CLEARED
+          Post-cleanup recommendation: restart application
+
+    - name: Write cache clear audit log
+      ansible.builtin.lineinfile:
+        path: "{{ audit_log_path }}"
+        line: >
+          {{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}
+          | CLEAR_APP_CACHE | employee={{ employee_id }} | app={{ app_name }}
+          | device={{ device_id }} | performed_by=ask_it_v2 | status=SUCCESS
+        create: true
+        mode: '0640'
+      ignore_errors: true
+
+    - name: Display cache clear summary
+      ansible.builtin.debug:
+        msg:
+          - "APPLICATION CACHE CLEARED"
+          - "Employee: {{ employee_id }}"
+          - "Application: {{ app_name }}"
+          - "Device: {{ device_id }}"
+          - "Cache path: {{ cache_path }}"
+
+# Made with Bob

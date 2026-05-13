@@ -1,0 +1,61 @@
+---
+- name: Ask IT v2 demo VPN remediation
+  hosts: localhost
+  gather_facts: false
+  connection: local
+
+  vars:
+    employee_id: "{{ employee_id | default('UNKNOWN') }}"
+    device_id: "{{ device_id | default('auto') }}"
+    gateway: "{{ gateway | default('vpn.northerntrust.com') }}"
+    action: "{{ action | default('auto') }}"
+    audit_log_path: "/var/log/nt-it-automation/vpn_remediate.log"
+
+  tasks:
+    - name: Validate VPN remediation request
+      ansible.builtin.assert:
+        that:
+          - employee_id != 'UNKNOWN'
+        fail_msg: "employee_id is required for VPN remediation"
+        success_msg: "Validated VPN remediation request for {{ employee_id }}"
+
+    - name: Simulate VPN diagnostics
+      ansible.builtin.debug:
+        msg: |
+          VPN diagnostics:
+          Employee: {{ employee_id }}
+          Device: {{ device_id }}
+          Gateway: {{ gateway }}
+          Requested action: {{ action }}
+          Finding: stale client profile detected
+
+    - name: Simulate VPN remediation
+      ansible.builtin.debug:
+        msg: |
+          VPN remediation completed:
+          Action executed: {{ action }}
+          Client profile reapplied
+          Tunnel validation: SUCCESS
+          Status: REMEDIATED
+
+    - name: Write VPN remediation audit log
+      ansible.builtin.lineinfile:
+        path: "{{ audit_log_path }}"
+        line: >
+          {{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}
+          | VPN_REMEDIATE | employee={{ employee_id }} | device={{ device_id }}
+          | gateway={{ gateway }} | action={{ action }} | performed_by=ask_it_v2 | status=SUCCESS
+        create: true
+        mode: '0640'
+      ignore_errors: true
+
+    - name: Display VPN remediation summary
+      ansible.builtin.debug:
+        msg:
+          - "VPN REMEDIATION COMPLETED"
+          - "Employee: {{ employee_id }}"
+          - "Device: {{ device_id }}"
+          - "Gateway: {{ gateway }}"
+          - "Action: {{ action }}"
+
+# Made with Bob

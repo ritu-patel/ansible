@@ -1,0 +1,60 @@
+---
+- name: Ask IT v2 demo revoke access
+  hosts: localhost
+  gather_facts: false
+  connection: local
+
+  vars:
+    employee_id: "{{ employee_id | default('UNKNOWN') }}"
+    reason: "{{ reason | default('voluntary_resignation') }}"
+    manager_approval: "{{ manager_approval | default('pending') }}"
+    audit_log_path: "/var/log/nt-it-automation/revoke_access.log"
+
+  tasks:
+    - name: Validate revoke access request
+      ansible.builtin.assert:
+        that:
+          - employee_id != 'UNKNOWN'
+          - reason | length > 0
+        fail_msg: "employee_id and reason are required for access revocation"
+        success_msg: "Validated revoke access request for {{ employee_id }}"
+
+    - name: Simulate approval verification
+      ansible.builtin.debug:
+        msg: |
+          Approval verification:
+          Employee: {{ employee_id }}
+          Reason: {{ reason }}
+          Manager approval state: {{ manager_approval }}
+          Status: VERIFIED FOR DEMO EXECUTION
+
+    - name: Simulate access revocation actions
+      ansible.builtin.debug:
+        msg: |
+          Access revocation completed:
+          Disabled directory access
+          Revoked VPN and SaaS access
+          Queued badge deactivation
+          Status: ACCESS REVOKED
+
+    - name: Write revoke access audit log
+      ansible.builtin.lineinfile:
+        path: "{{ audit_log_path }}"
+        line: >
+          {{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}
+          | REVOKE_ACCESS | employee={{ employee_id }} | reason={{ reason }}
+          | manager_approval={{ manager_approval }} | performed_by=ask_it_v2 | status=SUCCESS
+        create: true
+        mode: '0640'
+      ignore_errors: true
+
+    - name: Display revoke access summary
+      ansible.builtin.debug:
+        msg:
+          - "ACCESS REVOCATION COMPLETED"
+          - "Employee: {{ employee_id }}"
+          - "Reason: {{ reason }}"
+          - "Approval state: {{ manager_approval }}"
+          - "Status: REVOKED"
+
+# Made with Bob

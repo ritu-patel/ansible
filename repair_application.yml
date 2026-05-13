@@ -1,0 +1,62 @@
+---
+- name: Ask IT v2 demo repair application
+  hosts: localhost
+  gather_facts: false
+  connection: local
+
+  vars:
+    employee_id: "{{ employee_id | default('UNKNOWN') }}"
+    app_name: "{{ app_name | default('Unknown App') }}"
+    device_id: "{{ device_id | default('auto') }}"
+    installer_source: "{{ installer_source | default('company-software-repo') }}"
+    audit_log_path: "/var/log/nt-it-automation/repair_application.log"
+
+  tasks:
+    - name: Validate repair request
+      ansible.builtin.assert:
+        that:
+          - employee_id != 'UNKNOWN'
+          - app_name | length > 0
+        fail_msg: "employee_id and app_name are required for application repair"
+        success_msg: "Validated repair request for {{ app_name }}"
+
+    - name: Simulate install health checks
+      ansible.builtin.debug:
+        msg: |
+          Repair pre-checks:
+          Employee: {{ employee_id }}
+          Application: {{ app_name }}
+          Device: {{ device_id }}
+          Installer source: {{ installer_source }}
+          Finding: corrupted local install detected
+
+    - name: Simulate repair action
+      ansible.builtin.debug:
+        msg: |
+          Repair action completed:
+          Repaired binaries and refreshed dependent libraries
+          Application: {{ app_name }}
+          Status: REPAIRED
+          Validation: application launch test passed
+
+    - name: Write repair audit log
+      ansible.builtin.lineinfile:
+        path: "{{ audit_log_path }}"
+        line: >
+          {{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}
+          | REPAIR_APPLICATION | employee={{ employee_id }} | app={{ app_name }}
+          | device={{ device_id }} | performed_by=ask_it_v2 | status=SUCCESS
+        create: true
+        mode: '0640'
+      ignore_errors: true
+
+    - name: Display repair summary
+      ansible.builtin.debug:
+        msg:
+          - "APPLICATION REPAIR COMPLETED"
+          - "Employee: {{ employee_id }}"
+          - "Application: {{ app_name }}"
+          - "Device: {{ device_id }}"
+          - "Validation: launch test passed"
+
+# Made with Bob

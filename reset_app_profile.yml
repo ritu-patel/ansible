@@ -1,0 +1,61 @@
+---
+- name: Ask IT v2 demo reset app profile
+  hosts: localhost
+  gather_facts: false
+  connection: local
+
+  vars:
+    employee_id: "{{ employee_id | default('UNKNOWN') }}"
+    app_name: "{{ app_name | default('Unknown App') }}"
+    device_id: "{{ device_id | default('auto') }}"
+    profile_backup_dir: "{{ profile_backup_dir | default('/tmp/askit-profile-backups') }}"
+    audit_log_path: "/var/log/nt-it-automation/reset_app_profile.log"
+
+  tasks:
+    - name: Validate profile reset request
+      ansible.builtin.assert:
+        that:
+          - employee_id != 'UNKNOWN'
+          - app_name | length > 0
+        fail_msg: "employee_id and app_name are required for profile reset"
+        success_msg: "Validated profile reset request for {{ app_name }}"
+
+    - name: Simulate profile backup
+      ansible.builtin.debug:
+        msg: |
+          Backing up user profile:
+          Employee: {{ employee_id }}
+          Application: {{ app_name }}
+          Device: {{ device_id }}
+          Backup directory: {{ profile_backup_dir }}
+          Status: BACKUP COMPLETED
+
+    - name: Simulate profile reset
+      ansible.builtin.debug:
+        msg: |
+          Profile reset completed:
+          Removed corrupt profile settings for {{ app_name }}
+          Recreated default profile at next launch
+          Status: PROFILE RESET
+
+    - name: Write profile reset audit log
+      ansible.builtin.lineinfile:
+        path: "{{ audit_log_path }}"
+        line: >
+          {{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}
+          | RESET_APP_PROFILE | employee={{ employee_id }} | app={{ app_name }}
+          | device={{ device_id }} | performed_by=ask_it_v2 | status=SUCCESS
+        create: true
+        mode: '0640'
+      ignore_errors: true
+
+    - name: Display profile reset summary
+      ansible.builtin.debug:
+        msg:
+          - "APPLICATION PROFILE RESET COMPLETED"
+          - "Employee: {{ employee_id }}"
+          - "Application: {{ app_name }}"
+          - "Device: {{ device_id }}"
+          - "Backup directory: {{ profile_backup_dir }}"
+
+# Made with Bob

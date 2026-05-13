@@ -1,0 +1,60 @@
+---
+- name: Ask IT v2 demo patch endpoints
+  hosts: localhost
+  gather_facts: false
+  connection: local
+
+  vars:
+    target: "{{ target | default('all') }}"
+    patch_type: "{{ patch_type | default('security_only') }}"
+    window: "{{ window | default('next_window') }}"
+    audit_log_path: "/var/log/nt-it-automation/patch_endpoints.log"
+
+  tasks:
+    - name: Validate endpoint patch request
+      ansible.builtin.assert:
+        that:
+          - target | length > 0
+          - patch_type | length > 0
+        fail_msg: "target and patch_type are required for patching"
+        success_msg: "Validated patch request for {{ target }}"
+
+    - name: Simulate patch baseline collection
+      ansible.builtin.debug:
+        msg: |
+          Patch baseline:
+          Target: {{ target }}
+          Patch type: {{ patch_type }}
+          Maintenance window: {{ window }}
+          Findings: 12 endpoints require updates
+
+    - name: Simulate patch deployment
+      ansible.builtin.debug:
+        msg: |
+          Patch deployment completed:
+          Approved window: {{ window }}
+          Target: {{ target }}
+          Patches applied: security baseline bundle
+          Status: PATCHED
+
+    - name: Write endpoint patch audit log
+      ansible.builtin.lineinfile:
+        path: "{{ audit_log_path }}"
+        line: >
+          {{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}
+          | PATCH_ENDPOINTS | target={{ target }} | patch_type={{ patch_type }}
+          | window={{ window }} | performed_by=ask_it_v2 | status=SUCCESS
+        create: true
+        mode: '0640'
+      ignore_errors: true
+
+    - name: Display patch summary
+      ansible.builtin.debug:
+        msg:
+          - "ENDPOINT PATCHING COMPLETED"
+          - "Target: {{ target }}"
+          - "Patch type: {{ patch_type }}"
+          - "Window: {{ window }}"
+          - "Status: PATCHED"
+
+# Made with Bob

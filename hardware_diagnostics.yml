@@ -1,0 +1,61 @@
+---
+- name: Ask IT v2 demo hardware diagnostics
+  hosts: localhost
+  gather_facts: false
+  connection: local
+
+  vars:
+    employee_id: "{{ employee_id | default('UNKNOWN') }}"
+    component: "{{ component | default('keyboard') }}"
+    device_id: "{{ device_id | default('auto') }}"
+    audit_log_path: "/var/log/nt-it-automation/hardware_diagnostics.log"
+
+  tasks:
+    - name: Validate hardware diagnostics request
+      ansible.builtin.assert:
+        that:
+          - employee_id != 'UNKNOWN'
+          - component | length > 0
+        fail_msg: "employee_id and component are required for diagnostics"
+        success_msg: "Validated hardware diagnostics request for {{ employee_id }}"
+
+    - name: Simulate endpoint hardware scan
+      ansible.builtin.debug:
+        msg: |
+          Hardware scan results:
+          Employee: {{ employee_id }}
+          Device: {{ device_id }}
+          Component: {{ component }}
+          Result: intermittent fault detected
+          Recommendation: remote remediation or hardware swap review
+
+    - name: Simulate diagnostic artifact collection
+      ansible.builtin.debug:
+        msg: |
+          Diagnostic artifacts collected:
+          - system logs
+          - device health summary
+          - peripheral event history
+          Status: COLLECTION COMPLETE
+
+    - name: Write hardware diagnostics audit log
+      ansible.builtin.lineinfile:
+        path: "{{ audit_log_path }}"
+        line: >
+          {{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}
+          | HARDWARE_DIAGNOSTICS | employee={{ employee_id }} | component={{ component }}
+          | device={{ device_id }} | performed_by=ask_it_v2 | status=SUCCESS
+        create: true
+        mode: '0640'
+      ignore_errors: true
+
+    - name: Display diagnostics summary
+      ansible.builtin.debug:
+        msg:
+          - "HARDWARE DIAGNOSTICS COMPLETED"
+          - "Employee: {{ employee_id }}"
+          - "Device: {{ device_id }}"
+          - "Component: {{ component }}"
+          - "Recommendation: review collected artifacts"
+
+# Made with Bob

@@ -1,0 +1,55 @@
+---
+- name: Ask IT v2 demo remediate compliance
+  hosts: localhost
+  gather_facts: false
+  connection: local
+
+  vars:
+    violation_type: "{{ violation_type | default('all') }}"
+    dry_run: "{{ dry_run | default('false') }}"
+    audit_log_path: "/var/log/nt-it-automation/remediate_compliance.log"
+
+  tasks:
+    - name: Validate compliance remediation request
+      ansible.builtin.assert:
+        that:
+          - violation_type | length > 0
+        fail_msg: "violation_type is required for compliance remediation"
+        success_msg: "Validated compliance remediation request"
+
+    - name: Simulate remediation planning
+      ansible.builtin.debug:
+        msg: |
+          Compliance remediation plan:
+          Violation type: {{ violation_type }}
+          Dry run: {{ dry_run }}
+          Planned actions: patch missing endpoints, enforce agent baseline, close stale exceptions
+
+    - name: Simulate remediation execution
+      ansible.builtin.debug:
+        msg: |
+          Compliance remediation result:
+          Dry run mode: {{ dry_run }}
+          Remediation target: {{ violation_type }}
+          Status: REMEDIATION {{ 'SIMULATED' if dry_run | string == 'true' else 'EXECUTED' }}
+
+    - name: Write compliance remediation audit log
+      ansible.builtin.lineinfile:
+        path: "{{ audit_log_path }}"
+        line: >
+          {{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}
+          | REMEDIATE_COMPLIANCE | violation_type={{ violation_type }} | dry_run={{ dry_run }}
+          | performed_by=ask_it_v2 | status=SUCCESS
+        create: true
+        mode: '0640'
+      ignore_errors: true
+
+    - name: Display compliance remediation summary
+      ansible.builtin.debug:
+        msg:
+          - "COMPLIANCE REMEDIATION COMPLETED"
+          - "Violation type: {{ violation_type }}"
+          - "Dry run: {{ dry_run }}"
+          - "Status: {{ 'SIMULATED' if dry_run | string == 'true' else 'EXECUTED' }}"
+
+# Made with Bob

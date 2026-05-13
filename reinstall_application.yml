@@ -1,0 +1,61 @@
+---
+- name: Ask IT v2 demo reinstall application
+  hosts: localhost
+  gather_facts: false
+  connection: local
+
+  vars:
+    employee_id: "{{ employee_id | default('UNKNOWN') }}"
+    app_name: "{{ app_name | default('Unknown App') }}"
+    device_id: "{{ device_id | default('auto') }}"
+    package_source: "{{ package_source | default('company-software-repo') }}"
+    audit_log_path: "/var/log/nt-it-automation/reinstall_application.log"
+
+  tasks:
+    - name: Validate reinstall request
+      ansible.builtin.assert:
+        that:
+          - employee_id != 'UNKNOWN'
+          - app_name | length > 0
+        fail_msg: "employee_id and app_name are required for reinstall"
+        success_msg: "Validated reinstall request for {{ app_name }}"
+
+    - name: Simulate uninstall of existing application
+      ansible.builtin.debug:
+        msg: |
+          Uninstall phase:
+          Employee: {{ employee_id }}
+          Application: {{ app_name }}
+          Device: {{ device_id }}
+          Status: EXISTING INSTALL REMOVED
+
+    - name: Simulate reinstall of application
+      ansible.builtin.debug:
+        msg: |
+          Reinstall phase:
+          Package source: {{ package_source }}
+          Application: {{ app_name }}
+          Status: REINSTALLED
+          Validation: package checksum and launch test passed
+
+    - name: Write reinstall audit log
+      ansible.builtin.lineinfile:
+        path: "{{ audit_log_path }}"
+        line: >
+          {{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}
+          | REINSTALL_APPLICATION | employee={{ employee_id }} | app={{ app_name }}
+          | device={{ device_id }} | performed_by=ask_it_v2 | status=SUCCESS
+        create: true
+        mode: '0640'
+      ignore_errors: true
+
+    - name: Display reinstall summary
+      ansible.builtin.debug:
+        msg:
+          - "APPLICATION REINSTALL COMPLETED"
+          - "Employee: {{ employee_id }}"
+          - "Application: {{ app_name }}"
+          - "Device: {{ device_id }}"
+          - "Status: REINSTALLED"
+
+# Made with Bob

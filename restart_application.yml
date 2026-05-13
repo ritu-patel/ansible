@@ -1,0 +1,83 @@
+---
+- name: Ask IT v2 demo restart application
+  hosts: localhost
+  gather_facts: false
+  connection: local
+
+  vars:
+    employee_id: "{{ employee_id | default('UNKNOWN') }}"
+    app_name: "{{ app_name | default('Unknown App') }}"
+    device_id: "{{ device_id | default('auto') }}"
+    servicenow_instance: "{{ servicenow_instance | default('dev203276.service-now.com') }}"
+    audit_log_path: "/var/log/nt-it-automation/restart_application.log"
+
+  tasks:
+    - name: Validate restart request
+      ansible.builtin.assert:
+        that:
+          - employee_id != 'UNKNOWN'
+          - app_name | length > 0
+        fail_msg: "employee_id and app_name are required for application restart"
+        success_msg: "Validated restart request for {{ app_name }} for employee {{ employee_id }}"
+
+    - name: Simulate process discovery
+      ansible.builtin.debug:
+        msg: |
+          Application process inspection:
+          Employee: {{ employee_id }}
+          Application: {{ app_name }}
+          Device: {{ device_id }}
+          Result: process found and marked unresponsive
+          Action: graceful restart approved
+
+    - name: Simulate application restart
+      ansible.builtin.debug:
+        msg: |
+          Restart action completed:
+          App: {{ app_name }}
+          Device: {{ device_id }}
+          Status: RESTARTED
+          Health check: process responding normally
+
+    - name: Create ServiceNow incident note
+      ansible.builtin.uri:
+        url: "https://{{ servicenow_instance }}/api/now/table/incident"
+        method: POST
+        headers:
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          short_description: "Application restart executed for {{ app_name }}"
+          description: >
+            Ask IT v2 executed restart automation for {{ app_name }} on device {{ device_id }}
+            for employee {{ employee_id }}.
+          category: "Application"
+          subcategory: "Restart"
+          assignment_group: "EUC Support"
+          caller_id: "{{ employee_id }}"
+          priority: "4"
+        status_code: [200, 201]
+      register: restart_ticket
+      ignore_errors: true
+
+    - name: Write restart audit log
+      ansible.builtin.lineinfile:
+        path: "{{ audit_log_path }}"
+        line: >
+          {{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}
+          | RESTART_APPLICATION | employee={{ employee_id }} | app={{ app_name }}
+          | device={{ device_id }} | performed_by=ask_it_v2 | status=SUCCESS
+        create: true
+        mode: '0640'
+      ignore_errors: true
+
+    - name: Display restart summary
+      ansible.builtin.debug:
+        msg:
+          - "APPLICATION RESTART COMPLETED"
+          - "Employee: {{ employee_id }}"
+          - "Application: {{ app_name }}"
+          - "Device: {{ device_id }}"
+          - "Status: RESTARTED"
+
+# Made with Bob

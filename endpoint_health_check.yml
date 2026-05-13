@@ -1,0 +1,59 @@
+---
+- name: Ask IT v2 demo endpoint health check
+  hosts: localhost
+  gather_facts: false
+  connection: local
+
+  vars:
+    target: "{{ target | default('all') }}"
+    check_type: "{{ check_type | default('all') }}"
+    audit_log_path: "/var/log/nt-it-automation/endpoint_health_check.log"
+
+  tasks:
+    - name: Validate endpoint health check request
+      ansible.builtin.assert:
+        that:
+          - target | length > 0
+          - check_type | length > 0
+        fail_msg: "target and check_type are required for endpoint health checks"
+        success_msg: "Validated endpoint health check request for {{ target }}"
+
+    - name: Simulate health telemetry collection
+      ansible.builtin.debug:
+        msg: |
+          Endpoint telemetry collection:
+          Target: {{ target }}
+          Check type: {{ check_type }}
+          CPU, memory, disk, agent status, and patch levels collected
+          Result: 3 devices require follow-up review
+
+    - name: Simulate health summary generation
+      ansible.builtin.debug:
+        msg: |
+          Health summary:
+          Healthy endpoints: 97%
+          Warning state endpoints: 3%
+          Critical endpoints: 0
+          Status: HEALTH CHECK COMPLETE
+
+    - name: Write endpoint health audit log
+      ansible.builtin.lineinfile:
+        path: "{{ audit_log_path }}"
+        line: >
+          {{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}
+          | ENDPOINT_HEALTH_CHECK | target={{ target }} | check_type={{ check_type }}
+          | performed_by=ask_it_v2 | status=SUCCESS
+        create: true
+        mode: '0640'
+      ignore_errors: true
+
+    - name: Display endpoint health summary
+      ansible.builtin.debug:
+        msg:
+          - "ENDPOINT HEALTH CHECK COMPLETED"
+          - "Target: {{ target }}"
+          - "Check type: {{ check_type }}"
+          - "Healthy: 97%"
+          - "Warnings: 3%"
+
+# Made with Bob

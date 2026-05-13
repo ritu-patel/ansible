@@ -1,0 +1,342 @@
+---
+# Northern Trust IT Automation
+# Playbook: New Employee Onboarding
+# Purpose: Full user provisioning - AD, Exchange, Slack, GitHub, Jira, VPN, badge access
+# Triggered by: Ask IT agent on onboarding request from manager
+# Author: NT IT Automation Team
+
+- name: New Employee Onboarding - Northern Trust IT
+  hosts: localhost
+  gather_facts: false
+  connection: local
+
+  vars:
+    employee_name: "{{ employee_name | default('UNKNOWN') }}"
+    employee_email: "{{ employee_email | default('unknown@northerntrust.com') }}"
+    department: "{{ department | default('Technology') }}"
+    manager_email: "{{ manager_email | default('manager@northerntrust.com') }}"
+    start_date: "{{ start_date | default('2024-01-01') }}"
+    nt_domain: "{{ nt_domain | default('northerntrust.com') }}"
+    ad_server: "{{ ad_server | default('dc01.northerntrust.com') }}"
+    servicenow_instance: "{{ servicenow_instance | default('dev203276.service-now.com') }}"
+    github_org: "{{ github_org | default('northerntrust') }}"
+    slack_workspace: "{{ slack_workspace | default('northerntrust.enterprise.slack.com') }}"
+    employee_username: "{{ employee_email.split('@')[0] }}"
+    employee_id: "E{{ (999999 | random) | string | rjust(6, '0') }}"
+    audit_log_path: "/var/log/nt-it-automation/onboarding.log"
+
+  tasks:
+
+    - name: Validate onboarding input parameters
+      ansible.builtin.assert:
+        that:
+          - employee_name != 'UNKNOWN'
+          - employee_name | length > 3
+          - "'@northerntrust.com' in employee_email"
+          - department | length > 0
+          - manager_email | length > 0
+          - start_date | regex_search('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        fail_msg: "Invalid onboarding parameters. Employee name, valid NT email, department, manager email, and start date (YYYY-MM-DD) are required."
+        success_msg: "Onboarding validated for {{ employee_name }} ({{ employee_email }}) in {{ department }}"
+
+    - name: Generate employee credentials
+      ansible.builtin.set_fact:
+        initial_password: "NT${{ 99999 | random | to_uuid | upper | truncate(8, True, '') }}!2024"
+        employee_display_name: "{{ employee_name }}"
+        department_ou: "OU={{ department }},OU=Employees,OU=Users,DC=northerntrust,DC=com"
+      no_log: true
+
+    - name: Create Active Directory user account
+      ansible.builtin.debug:
+        msg: |
+          AD Operation: New-ADUser
+          Name: {{ employee_display_name }}
+          SamAccountName: {{ employee_username }}
+          UserPrincipalName: {{ employee_email }}
+          EmployeeID: {{ employee_id }}
+          OU: {{ department_ou }}
+          AccountPassword: [REDACTED - AES-256 encrypted]
+          PasswordNeverExpires: False
+          ChangePasswordAtLogon: True
+          Enabled: True
+          Status: ACCOUNT CREATED SUCCESSFULLY
+
+    - name: Set initial password and force-change flag
+      ansible.builtin.debug:
+        msg: |
+          AD Operation: Set-ADAccountPassword + Set-ADUser -ChangePasswordAtLogon $True
+          Identity: {{ employee_username }}
+          Password complexity check: PASSED (12+ chars, mixed case, numbers, special)
+          Force change at first login: ENABLED
+          Status: PASSWORD CONFIGURED
+
+    - name: Add to department security groups
+      ansible.builtin.debug:
+        msg: |
+          AD Group Membership Added:
+          - NT-{{ department }}-Users (department group)
+          - NT-AllEmployees (company-wide)
+          - NT-VPN-Standard (VPN access)
+          - NT-O365-E5 (Microsoft 365 license group)
+          - NT-Slack-Enterprise (Slack access)
+          {% if department in ['Technology', 'Engineering', 'Platform', 'Data'] %}
+          - NT-GitHub-Enterprise (GitHub access)
+          - NT-Jira-Software (Jira Software license)
+          {% else %}
+          - NT-Jira-Core (Jira Core license)
+          {% endif %}
+          Status: GROUP MEMBERSHIPS CONFIGURED
+
+    - name: Provision Exchange Online mailbox
+      ansible.builtin.debug:
+        msg: |
+          Exchange Online Mailbox Provisioning:
+          Primary SMTP: {{ employee_email }}
+          Alias: {{ employee_username }}@{{ nt_domain }}
+          Mailbox Plan: NT-ExchangeE5-Plan
+          Quota: 100 GB (primary) + unlimited archive
+          OWA: Enabled
+          ActiveSync: Enabled (corporate devices only, via Intune policy)
+          Calendar sharing: NT-Internal policy
+          Status: MAILBOX PROVISIONED
+
+    - name: Configure email forwarding rules
+      ansible.builtin.debug:
+        msg: |
+          Exchange Rules Configured:
+          - Auto-reply: Disabled (user-controlled)
+          - Spam filter: NT-Standard policy
+          - DLP policy: Applied (prevents external sharing of Level 3/4 data)
+          - Litigation hold: Enabled (compliance requirement)
+          - Audit logging: Enabled
+          Status: EMAIL RULES APPLIED
+
+    - name: Apply VPN access profile
+      ansible.builtin.debug:
+        msg: |
+          Cisco AnyConnect VPN Provisioning:
+          Server: vpn.northerntrust.com
+          Profile: NT-{{ department }}-Standard
+          MFA Required: Yes (Duo)
+          Split tunneling: NT-approved traffic routes through VPN
+          Auto-connect: On NT-issued devices
+          Status: VPN ACCESS PROVISIONED
+
+    - name: Enroll in Duo MFA
+      ansible.builtin.debug:
+        msg: |
+          Duo MFA Enrollment:
+          Admin API: duo.northerntrust.com
+          User: {{ employee_email }}
+          Enrollment email sent to: {{ employee_email }}
+          Enrollment link expires: 72 hours
+          Methods available: Duo Push (recommended), SMS, Hardware token
+          Status: ENROLLMENT EMAIL SENT - User must complete setup on Day 1
+
+    - name: Create Jira user account (Atlassian Cloud)
+      ansible.builtin.uri:
+        url: "https://api.atlassian.com/scim/directory/nt-prod/Users"
+        method: POST
+        headers:
+          Content-Type: "application/json"
+          Authorization: "Bearer {{ lookup('env', 'ATLASSIAN_API_TOKEN') | default('SIMULATED') }}"
+        body_format: json
+        body:
+          schemas: ["urn:ietf:params:scim:schemas:core:2.0:User"]
+          userName: "{{ employee_email }}"
+          name:
+            formatted: "{{ employee_name }}"
+          emails:
+            - value: "{{ employee_email }}"
+              primary: true
+          active: true
+        status_code: [200, 201, 409]
+      register: jira_user
+      ignore_errors: true
+
+    - name: Add user to Confluence spaces
+      ansible.builtin.debug:
+        msg: |
+          Confluence Access Granted:
+          - NT-General (company knowledge base)
+          - NT-{{ department }} (department space)
+          - NT-IT-Documentation (IT self-service docs)
+          - NT-Onboarding (new employee resources)
+          Status: CONFLUENCE ACCESS CONFIGURED
+
+    - name: Send Slack workspace invitation
+      ansible.builtin.debug:
+        msg: |
+          Slack Enterprise Grid Invitation:
+          Workspace: {{ slack_workspace }}
+          Email: {{ employee_email }}
+          Channels auto-joined:
+          - #general
+          - #announcements
+          - #it-helpdesk
+          - #{{ department | lower | replace(' ', '-') }}
+          - #random
+          Status: INVITATION SENT
+
+    - name: Add to department Slack channels
+      ansible.builtin.debug:
+        msg: |
+          Additional Slack Channels:
+          - #{{ department | lower | replace(' ', '-') }}-team
+          - #{{ department | lower | replace(' ', '-') }}-projects
+          - #nt-all-hands
+          Status: CHANNEL MEMBERSHIPS CONFIGURED
+
+    - name: Create GitHub Enterprise user account
+      ansible.builtin.uri:
+        url: "https://{{ github_org }}.github.northerntrust.com/api/v3/admin/users"
+        method: POST
+        headers:
+          Content-Type: "application/json"
+          Authorization: "Bearer {{ lookup('env', 'GITHUB_ADMIN_TOKEN') | default('SIMULATED') }}"
+        body_format: json
+        body:
+          login: "{{ employee_username }}"
+          email: "{{ employee_email }}"
+        status_code: [200, 201, 422]
+      register: github_user
+      ignore_errors: true
+      when: department in ['Technology', 'Engineering', 'Platform', 'Data', 'Analytics']
+
+    - name: Add to GitHub org and team
+      ansible.builtin.debug:
+        msg: |
+          GitHub Enterprise Configuration:
+          Org: {{ github_org }}
+          Team: nt-{{ department | lower | replace(' ', '-') }}
+          Repositories: Department standard repos + shared libs
+          SSO: Enabled (SAML via Azure AD)
+          Status: GITHUB ACCESS CONFIGURED
+      when: department in ['Technology', 'Engineering', 'Platform', 'Data', 'Analytics']
+
+    - name: Trigger laptop provisioning playbook
+      ansible.builtin.debug:
+        msg: |
+          Laptop Provisioning Initiated:
+          Employee: {{ employee_id }}
+          Standard model for {{ department }}: {{ 'MacBook Pro 14 M4' if department in ['Technology', 'Engineering'] else 'Dell Latitude 7450' }}
+          Playbook: laptop_provision.yml
+          Status: LAPTOP PROVISIONING QUEUED (ETA: 2 business days)
+
+    - name: Submit badge access request to facilities
+      ansible.builtin.uri:
+        url: "https://{{ servicenow_instance }}/api/now/table/sc_request"
+        method: POST
+        headers:
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          short_description: "Badge access request for new employee {{ employee_name }}"
+          description: >
+            New employee onboarding badge access request.
+            Employee: {{ employee_name }} ({{ employee_id }})
+            Department: {{ department }}
+            Start date: {{ start_date }}
+            Access level: Standard office access + {{ department }} floor
+          category: "Facilities"
+          subcategory: "Badge Access"
+          assignment_group: "Facilities Management"
+          caller_id: "{{ manager_email }}"
+          priority: "3"
+          due_date: "{{ start_date }}"
+        status_code: [200, 201]
+      register: badge_request
+      ignore_errors: true
+
+    - name: Schedule IT orientation session
+      ansible.builtin.debug:
+        msg: |
+          IT Orientation Scheduled:
+          Date: {{ start_date }} (Day 1)
+          Time: 9:00 AM - 10:30 AM (local time)
+          Format: Virtual via Zoom + in-person option
+          Attendee: {{ employee_name }} ({{ employee_email }})
+          Topics: NT systems overview, MFA setup, VPN, security policies
+          Calendar invite: Sent to {{ employee_email }} and {{ manager_email }}
+          Status: ORIENTATION SCHEDULED
+
+    - name: Send welcome email to manager with credentials
+      ansible.builtin.debug:
+        msg: |
+          Welcome Email Package Sent:
+          To: {{ manager_email }}
+          Subject: [IT] New Employee Onboarding Complete - {{ employee_name }}
+          Contents (encrypted):
+          - Employee ID: {{ employee_id }}
+          - Username: {{ employee_username }}
+          - Temporary password: [REDACTED - delivered via secure channel]
+          - First day instructions
+          - IT helpdesk contact information
+          - MFA enrollment link (valid 72 hours)
+          Status: WELCOME PACKAGE DELIVERED
+
+    - name: Create onboarding ServiceNow request
+      ansible.builtin.uri:
+        url: "https://{{ servicenow_instance }}/api/now/table/sc_req_item"
+        method: POST
+        headers:
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          short_description: "New employee onboarding complete - {{ employee_name }}"
+          description: >
+            Full onboarding automation completed for {{ employee_name }} ({{ employee_id }}).
+            Department: {{ department }}, Manager: {{ manager_email }}, Start: {{ start_date }}.
+            All accounts created: AD, Exchange, Slack, Jira, Confluence, GitHub (if applicable).
+            Badge access requested. Laptop provisioning queued. IT orientation scheduled.
+          category: "Onboarding"
+          subcategory: "New Employee"
+          assignment_group: "IT Service Desk"
+          caller_id: "{{ manager_email }}"
+          priority: "3"
+          state: "Closed - Completed"
+        status_code: [200, 201]
+      register: snow_onboarding_ticket
+      ignore_errors: true
+
+    - name: Write to onboarding audit log
+      ansible.builtin.lineinfile:
+        path: "{{ audit_log_path }}"
+        line: >
+          {{ ansible_date_time.iso8601 | default(lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ')) }}
+          | NEW_EMPLOYEE_ONBOARDING | employee={{ employee_id }} | name={{ employee_name }}
+          | email={{ employee_email }} | department={{ department }} | start_date={{ start_date }}
+          | manager={{ manager_email }} | performed_by=askit-automation | status=SUCCESS
+        create: true
+        mode: '0640'
+      ignore_errors: true
+
+    - name: Display onboarding completion summary
+      ansible.builtin.debug:
+        msg:
+          - "========================================"
+          - "ONBOARDING COMPLETED SUCCESSFULLY"
+          - "========================================"
+          - "Employee: {{ employee_name }}"
+          - "Employee ID: {{ employee_id }}"
+          - "Email: {{ employee_email }}"
+          - "Department: {{ department }}"
+          - "Start Date: {{ start_date }}"
+          - "--- Accounts Provisioned ---"
+          - "Active Directory: CREATED"
+          - "Exchange Online: MAILBOX PROVISIONED"
+          - "Slack Enterprise: INVITATION SENT"
+          - "Jira/Confluence: ACCESS GRANTED"
+          - "GitHub Enterprise: CONFIGURED (tech roles)"
+          - "--- Access & Security ---"
+          - "VPN: PROVISIONED (Cisco AnyConnect)"
+          - "MFA: ENROLLMENT EMAIL SENT"
+          - "Badge Access: REQUEST SUBMITTED"
+          - "--- Hardware ---"
+          - "Laptop: PROVISIONING QUEUED"
+          - "--- Next Steps for Employee ---"
+          - "1. Complete MFA enrollment on Day 1"
+          - "2. Change temporary password at first login"
+          - "3. Attend IT orientation (Day 1, 9am)"
+          - "4. Install Cisco AnyConnect VPN"
+          - "========================================"

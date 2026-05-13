@@ -1,0 +1,59 @@
+---
+- name: Ask IT v2 demo VPN certificate renewal
+  hosts: localhost
+  gather_facts: false
+  connection: local
+
+  vars:
+    employee_id: "{{ employee_id | default('UNKNOWN') }}"
+    device_id: "{{ device_id | default('auto') }}"
+    cert_authority: "{{ cert_authority | default('NT-Internal-CA') }}"
+    audit_log_path: "/var/log/nt-it-automation/vpn_cert_renew.log"
+
+  tasks:
+    - name: Validate VPN certificate renewal request
+      ansible.builtin.assert:
+        that:
+          - employee_id != 'UNKNOWN'
+        fail_msg: "employee_id is required for VPN certificate renewal"
+        success_msg: "Validated certificate renewal request for {{ employee_id }}"
+
+    - name: Simulate certificate status check
+      ansible.builtin.debug:
+        msg: |
+          VPN certificate inspection:
+          Employee: {{ employee_id }}
+          Device: {{ device_id }}
+          Certificate authority: {{ cert_authority }}
+          Finding: certificate expiring within 3 days
+
+    - name: Simulate certificate renewal
+      ansible.builtin.debug:
+        msg: |
+          Certificate renewal completed:
+          Device: {{ device_id }}
+          New certificate issued by {{ cert_authority }}
+          VPN profile updated
+          Status: CERTIFICATE RENEWED
+
+    - name: Write certificate renewal audit log
+      ansible.builtin.lineinfile:
+        path: "{{ audit_log_path }}"
+        line: >
+          {{ lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ') }}
+          | VPN_CERT_RENEW | employee={{ employee_id }} | device={{ device_id }}
+          | certificate_authority={{ cert_authority }} | performed_by=ask_it_v2 | status=SUCCESS
+        create: true
+        mode: '0640'
+      ignore_errors: true
+
+    - name: Display certificate renewal summary
+      ansible.builtin.debug:
+        msg:
+          - "VPN CERTIFICATE RENEWAL COMPLETED"
+          - "Employee: {{ employee_id }}"
+          - "Device: {{ device_id }}"
+          - "Certificate authority: {{ cert_authority }}"
+          - "Status: RENEWED"
+
+# Made with Bob

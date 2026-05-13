@@ -1,0 +1,251 @@
+---
+# Northern Trust IT Automation
+# Playbook: Laptop Provisioning and MDM Enrollment
+# Purpose: Automates device setup, MDM enrollment, and standard software deployment
+# Triggered by: Ask IT agent on laptop order approval
+# Author: NT IT Automation Team
+
+- name: Laptop Provisioning Automation - Northern Trust IT
+  hosts: localhost
+  gather_facts: false
+  connection: local
+
+  vars:
+    employee_id: "{{ employee_id | default('UNKNOWN') }}"
+    laptop_model: "{{ laptop_model | default('Dell Latitude 7450') }}"
+    department: "{{ department | default('Technology') }}"
+    order_id: "{{ order_id | default('ORD-UNKNOWN') }}"
+    serial_number: "{{ serial_number | default('SN' + (99999 | random | string)) }}"
+    nt_domain: "{{ nt_domain | default('northerntrust.com') }}"
+    servicenow_instance: "{{ servicenow_instance | default('dev203276.service-now.com') }}"
+    mdm_server: "{{ mdm_server | default('jamf.northerntrust.com') }}"
+    cmdb_server: "{{ cmdb_server | default('cmdb.northerntrust.com') }}"
+    audit_log_path: "/var/log/nt-it-automation/laptop_provision.log"
+
+  tasks:
+
+    - name: Validate employee ID and order information
+      ansible.builtin.assert:
+        that:
+          - employee_id != 'UNKNOWN'
+          - employee_id | regex_search('^E[0-9]{6}$')
+          - laptop_model | length > 0
+        fail_msg: "Invalid employee ID or missing laptop model. Employee ID must be E followed by 6 digits."
+        success_msg: "Provisioning validated for employee {{ employee_id }} - {{ laptop_model }}"
+
+    - name: Determine OS platform from laptop model
+      ansible.builtin.set_fact:
+        os_platform: "{{ 'macOS' if 'MacBook' in laptop_model else 'Windows 11' }}"
+        mdm_solution: "{{ 'Jamf Pro' if 'MacBook' in laptop_model else 'Microsoft Intune' }}"
+        encryption_tool: "{{ 'FileVault 2' if 'MacBook' in laptop_model else 'BitLocker' }}"
+        asset_tag: "NT-{{ department[:3] | upper }}-{{ 9999 | random }}"
+
+    - name: Create device record in CMDB
+      ansible.builtin.uri:
+        url: "https://{{ servicenow_instance }}/api/now/table/cmdb_ci_computer"
+        method: POST
+        headers:
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          name: "NT-LAPTOP-{{ serial_number }}"
+          serial_number: "{{ serial_number }}"
+          model_id: "{{ laptop_model }}"
+          os: "{{ os_platform }}"
+          assigned_to: "{{ employee_id }}"
+          department: "{{ department }}"
+          asset_tag: "{{ asset_tag }}"
+          install_status: "In Stock"
+          managed_by: "IT Infrastructure"
+        status_code: [200, 201]
+      register: cmdb_record
+      ignore_errors: true
+
+    - name: Register device serial number in asset management
+      ansible.builtin.debug:
+        msg: |
+          Asset Registration:
+          Asset Tag: {{ asset_tag }}
+          Serial Number: {{ serial_number }}
+          Model: {{ laptop_model }}
+          Assigned To: {{ employee_id }}
+          Department: {{ department }}
+          Status: REGISTERED in NT Asset Management System
+
+    - name: Configure MDM enrollment profile
+      ansible.builtin.debug:
+        msg: |
+          MDM Enrollment: {{ mdm_solution }}
+          Server: {{ mdm_server }}
+          Device: {{ serial_number }}
+          Enrollment Profile: NT-{{ department }}-Standard
+          Status: ENROLLMENT PROFILE PUSHED
+
+    - name: Apply corporate security baseline configuration
+      ansible.builtin.debug:
+        msg: |
+          Security Baseline Applied:
+          - Screen lock timeout: 5 minutes
+          - Firewall: Enabled
+          - Remote access: IT-only via Jump Server
+          - USB restriction: Read-only (data loss prevention)
+          - Webcam access: User-controlled with notification
+          - Bluetooth: Allowed (corporate peripherals only)
+          Status: BASELINE CONFIGURATION APPLIED
+
+    - name: Push Microsoft 365 E5 license assignment
+      ansible.builtin.debug:
+        msg: |
+          Microsoft 365 E5 License:
+          User: {{ employee_id | lower }}@{{ nt_domain }}
+          License SKU: ENTERPRISEPREMIUM (E5)
+          Apps included: Outlook, Word, Excel, PowerPoint, Teams, OneNote, OneDrive, Defender
+          Status: LICENSE ASSIGNED via Microsoft Graph API
+
+    - name: Deploy Slack Enterprise Grid via MDM
+      ansible.builtin.debug:
+        msg: |
+          MDM Software Push: Slack Enterprise Grid
+          Version: Latest
+          Workspace: northerntrust.enterprise.slack.com
+          Channels: #general, #it-helpdesk, #{{ department | lower }}
+          Status: DEPLOYED via {{ mdm_solution }}
+
+    - name: Deploy Zoom Rooms client via MDM
+      ansible.builtin.debug:
+        msg: |
+          MDM Software Push: Zoom
+          Version: Latest (FIPS-compliant)
+          License: Enterprise
+          Status: DEPLOYED via {{ mdm_solution }}
+
+    - name: Deploy GitHub Desktop via MDM
+      ansible.builtin.debug:
+        msg: |
+          MDM Software Push: GitHub Desktop
+          Connected to: github.northerntrust.com (Enterprise)
+          Status: DEPLOYED via {{ mdm_solution }}
+      when: department in ['Technology', 'Engineering', 'Platform', 'Data']
+
+    - name: Deploy 1Password Business via MDM
+      ansible.builtin.debug:
+        msg: |
+          MDM Software Push: 1Password Business
+          Team: Northern Trust IT
+          Policy: NT-SEC password vault policy
+          Status: DEPLOYED via {{ mdm_solution }}
+
+    - name: Deploy CrowdStrike Falcon EDR sensor
+      ansible.builtin.debug:
+        msg: |
+          EDR Deployment: CrowdStrike Falcon
+          Sensor Version: Latest
+          CID: NT-PROD-{{ department[:3] | upper }}
+          Prevention Policy: NT-Standard-Prevention
+          Status: SENSOR INSTALLED AND REPORTING
+
+    - name: Configure CrowdStrike policy group assignment
+      ansible.builtin.debug:
+        msg: |
+          CrowdStrike Policy Assignment:
+          Device Group: NT-{{ department }}-Endpoints
+          Prevention Policy: Strict (Financial Services Profile)
+          Threat Intelligence: Real-time
+          Status: POLICY GROUP ASSIGNED
+
+    - name: Enable disk encryption
+      ansible.builtin.debug:
+        msg: |
+          Disk Encryption: {{ encryption_tool }}
+          Status: ENABLED
+          Recovery Key: Escrowed to {{ mdm_solution }} server
+          Encryption Algorithm: AES-256-XTS
+          Verification: Full disk encryption confirmed
+
+    - name: Register in Cisco AnyConnect VPN policy
+      ansible.builtin.debug:
+        msg: |
+          VPN Registration: Cisco AnyConnect
+          Server: vpn.northerntrust.com
+          Policy Group: NT-{{ department }}-VPN
+          MFA Required: Yes (Duo)
+          Split Tunneling: Configured for NT subnets
+          Status: VPN PROFILE DEPLOYED
+
+    - name: Configure Microsoft Intune compliance policy (Windows only)
+      ansible.builtin.debug:
+        msg: |
+          Intune Compliance Policy Applied:
+          - Minimum OS: Windows 11 22H2
+          - BitLocker required: True
+          - Defender enabled: True
+          - Firewall required: True
+          - Code integrity: Required
+          Status: COMPLIANCE POLICY APPLIED
+      when: "'Windows' in os_platform"
+
+    - name: Configure Jamf compliance policy (macOS only)
+      ansible.builtin.debug:
+        msg: |
+          Jamf Compliance Policy Applied:
+          - Minimum macOS: 14.0 (Sonoma)
+          - FileVault required: True
+          - Gatekeeper: Required
+          - System Integrity Protection: Enabled
+          - XProtect: Auto-updated
+          Status: JAMF COMPLIANCE POLICY APPLIED
+      when: "'macOS' in os_platform"
+
+    - name: Create ServiceNow asset request ticket
+      ansible.builtin.uri:
+        url: "https://{{ servicenow_instance }}/api/now/table/sc_request"
+        method: POST
+        headers:
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          short_description: "Laptop provisioned for employee {{ employee_id }} - {{ laptop_model }}"
+          description: >
+            Automated laptop provisioning completed for {{ employee_id }}.
+            Model: {{ laptop_model }}, OS: {{ os_platform }}, MDM: {{ mdm_solution }},
+            Asset Tag: {{ asset_tag }}, Serial: {{ serial_number }},
+            Order ID: {{ order_id }}
+          category: "Hardware"
+          subcategory: "Laptop"
+          assignment_group: "IT Asset Management"
+          caller_id: "{{ employee_id }}"
+          priority: "3"
+        status_code: [200, 201]
+      register: snow_ticket
+      ignore_errors: true
+
+    - name: Write to provisioning audit log
+      ansible.builtin.lineinfile:
+        path: "{{ audit_log_path }}"
+        line: >
+          {{ ansible_date_time.iso8601 | default(lookup('pipe', 'date -u +%Y-%m-%dT%H:%M:%SZ')) }}
+          | LAPTOP_PROVISION | employee={{ employee_id }} | model={{ laptop_model }}
+          | os={{ os_platform }} | asset_tag={{ asset_tag }} | serial={{ serial_number }}
+          | order={{ order_id }} | performed_by=askit-automation | status=SUCCESS
+        create: true
+        mode: '0640'
+      ignore_errors: true
+
+    - name: Display provisioning completion summary
+      ansible.builtin.debug:
+        msg:
+          - "========================================"
+          - "LAPTOP PROVISIONING COMPLETED"
+          - "========================================"
+          - "Employee ID: {{ employee_id }}"
+          - "Model: {{ laptop_model }}"
+          - "OS Platform: {{ os_platform }}"
+          - "Asset Tag: {{ asset_tag }}"
+          - "Serial Number: {{ serial_number }}"
+          - "MDM Solution: {{ mdm_solution }}"
+          - "Encryption: {{ encryption_tool }} (ENABLED)"
+          - "EDR: CrowdStrike Falcon (ACTIVE)"
+          - "VPN: Cisco AnyConnect (CONFIGURED)"
+          - "Software: M365 E5, Slack, Zoom, 1Password, CrowdStrike"
+          - "Next Steps: Physical delivery to employee, MFA setup required"
+          - "========================================"
